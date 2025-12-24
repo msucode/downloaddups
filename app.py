@@ -5,7 +5,7 @@ from utils import convert_to_csv_url, build_yearly_index, get_block_key
 from matcher import find_best_match
 import config
 
-st.title("Patient Duplicate Finder")
+st.title("MSU, MUMBAI, Patient Duplicate Finder")
 
 yearly_url = st.text_input("Yearly Database Sheet URL")
 daily_url = st.text_input("Today's Linelist URL")
