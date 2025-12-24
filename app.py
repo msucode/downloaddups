@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+from datetime import datetime
 from utils import convert_to_csv_url, build_yearly_index, get_block_key
 from matcher import find_best_match
 import config
@@ -37,8 +38,6 @@ if 'df_yearly' in st.session_state:
         addr_col = st.selectbox("Column 3 (Address)", cols, key='col3')
         extra_col = st.selectbox("Column 4 (Extra)", cols, key='col4')
     
-    duplicate_threshold = st.slider("Duplicate Threshold", 60, 100, config.DEFAULT_DUPLICATE_THRESHOLD)
-    
     if st.button("🔍 Find Duplicates"):
         df_yearly = st.session_state['df_yearly']
         df_daily = st.session_state['df_daily']
@@ -48,7 +47,7 @@ if 'df_yearly' in st.session_state:
         
         st.info("Comparing...")
         
-        duplicate_ids = set()
+        perfect_duplicate_ids = set()  # Only PERFECT matches
         all_results = []
         
         for i, daily_row in df_daily.iterrows():
@@ -57,11 +56,12 @@ if 'df_yearly' in st.session_state:
             
             best_match = find_best_match(daily_row, candidates, name_col, mobile_col, addr_col, extra_col)
             
-            if best_match and best_match['score'] >= duplicate_threshold:
-                duplicate_ids.add(i)
-                status = "DUPLICATE"
+            # Only PERFECT matches (4/4 columns) are duplicates
+            if best_match and best_match['match_type'] == '🟢 PERFECT':
+                perfect_duplicate_ids.add(i)
+                status = "PERFECT DUPLICATE"
             else:
-                status = "NEW"
+                status = "NEW/PARTIAL"
             
             if best_match:
                 result = {
@@ -92,25 +92,61 @@ if 'df_yearly' in st.session_state:
                 
                 all_results.append(result)
         
-        # Split files
-        df_duplicates = df_daily[df_daily.index.isin(duplicate_ids)]
-        df_new = df_daily[~df_daily.index.isin(duplicate_ids)]
+        # Split files: Only PERFECT duplicates vs everything else
+        df_perfect_duplicates = df_daily[df_daily.index.isin(perfect_duplicate_ids)]
+        df_new_records = df_daily[~df_daily.index.isin(perfect_duplicate_ids)]
         
-        st.success(f"✅ {len(df_duplicates)} DUPLICATES | {len(df_new)} NEW")
+        st.success(f"✅ {len(df_perfect_duplicates)} PERFECT DUPLICATES | {len(df_new_records)} TO UPLOAD")
         
+        # Display results
         if all_results:
             df_results = pd.DataFrame(all_results)
-            st.dataframe(df_results, use_container_width=True)
-            st.download_button("📥 Full Report", df_results.to_csv(index=False), "report.csv")
+            
+            perfect = df_results[df_results['Status'] == 'PERFECT DUPLICATE']
+            others = df_results[df_results['Status'] == 'NEW/PARTIAL']
+            
+            if len(perfect) > 0:
+                with st.expander(f"🟢 Perfect Duplicates - Skip These ({len(perfect)})"):
+                    st.dataframe(perfect, use_container_width=True)
+            
+            if len(others) > 0:
+                st.subheader(f"📋 To Upload - New & Partial Matches ({len(others)})")
+                st.dataframe(others, use_container_width=True)
+        
+        # Generate filenames with Indian date format DD_MM_YYYY
+        today = datetime.now()
+        date_str = today.strftime("%d_%m_%Y")
+        
+        duplicates_filename = f"{date_str}_possibleDuplicate.csv"
+        new_records_filename = f"{date_str}_DailyLinelist.csv"
+        
+        # Download buttons
+        st.subheader("📂 Download Files")
         
         col_a, col_b = st.columns(2)
         
         with col_a:
-            st.metric("Duplicates", len(df_duplicates))
-            if len(df_duplicates) > 0:
-                st.download_button("📥 Duplicates", df_duplicates.to_csv(index=False), "duplicates.csv")
+            st.metric("Perfect Duplicates", len(df_perfect_duplicates))
+            st.caption("Keep for records - Don't upload")
+            if len(df_perfect_duplicates) > 0:
+                st.download_button(
+                    "📥 Download Duplicates",
+                    df_perfect_duplicates.to_csv(index=False),
+                    duplicates_filename,
+                    key='dup'
+                )
+            else:
+                st.info("No perfect duplicates found")
         
         with col_b:
-            st.metric("New Records", len(df_new))
-            if len(df_new) > 0:
-                st.download_button("📥 New Records", df_new.to_csv(index=False), "new_records.csv")
+            st.metric("New Records to Upload", len(df_new_records))
+            st.caption("Upload these to yearly database")
+            if len(df_new_records) > 0:
+                st.download_button(
+                    "📥 Download New Records",
+                    df_new_records.to_csv(index=False),
+                    new_records_filename,
+                    key='new'
+                )
+            else:
+                st.info("No new records to upload")
