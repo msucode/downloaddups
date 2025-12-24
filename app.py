@@ -75,6 +75,8 @@ if 'df_yearly' in st.session_state:
                     'Yearly_Col3': str(best_match['yearly_row'][addr_col])[:50],
                     'Daily_Col4': str(daily_row[extra_col])[:50],
                     'Yearly_Col4': str(best_match['yearly_row'][extra_col])[:50],
+                    'Patient Address': daily_row.get('Patient Address', ''),
+                    'Facility Name Lform': daily_row.get('Facility Name Lform', '')
                 }
                 
                 if best_match['is_exact']:
